@@ -172,6 +172,41 @@ pub fn decompress_swf<'a, R: Read + 'a>(mut input: R) -> Result<SwfBuf> {
     })
 }
 
+/// Parses the footer from a projector EXE file with an embedded SWF, and
+/// returns the byte offset of the start of the embedded SWF. The file can
+/// then be parsed as normal starting at that offset.
+///
+/// Returns an `Error` if this is not a valid projector EXE with an
+/// embedded SWF.
+///
+/// # Example
+/// ```
+/// # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
+/// let data = std::fs::read("tests/swfs/DefineSprite.exe").unwrap();
+/// let offset = swf::read::parse_embedded_swf_len(&data[..]).unwrap();
+/// let swf_stream = swf::decompress_swf(&data[offset..]).unwrap();
+/// println!("FPS: {}", swf_stream.header.frame_rate());
+/// ```
+pub fn parse_embedded_swf_len<R: Read>(mut input: R) -> Result<usize> {
+    const PROJECTOR_EXE_CHECK_VALUE: u32 = 0xfa123456;
+
+    // The last 8 bytes of the file are a 4-byte "check" value followed by
+    // the size of the embedded SWF file as a u32.
+    let mut data = Vec::new();
+    input.read_to_end(&mut data)?;
+    let mut footer = &data[data.len() - 8..];
+    let check_value = footer.read_u32::<LittleEndian>()?;
+    if check_value != PROJECTOR_EXE_CHECK_VALUE {
+        return Err(Error::invalid_data("Invalid projector EXE"));
+    }
+    let swf_len = footer.read_u32::<LittleEndian>()? as usize;
+
+    // The embedded SWF file is the `swf_len` bytes prior to the check
+    // value, so the SWF starts at `swf_len + 8` bytes prior to the end
+    // of the file.
+    Ok(data.len() - swf_len - 8)
+}
+
 #[cfg(feature = "flate2")]
 fn make_zlib_reader<'a, R: Read + 'a>(input: R) -> Result<Box<dyn Read + 'a>> {
     use flate2::read::ZlibDecoder;
@@ -2652,6 +2687,14 @@ pub mod tests {
         let result = decompress_swf(&junk[..]);
         // TODO: Verify correct error.
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn read_projector_exe_embedded_swf() {
+        let data = std::fs::read("tests/swfs/DefineSprite.exe").unwrap();
+        let offset = parse_embedded_swf_len(&data[..]).unwrap();
+        let swf_buf = decompress_swf(&data[offset..]).unwrap();
+        assert_eq!(swf_buf.header.frame_rate().get(), 24i16);
     }
 
     #[test]
