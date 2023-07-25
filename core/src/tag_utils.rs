@@ -1,6 +1,6 @@
 use gc_arena::Collect;
 use std::sync::Arc;
-use swf::{CharacterId, Fixed8, HeaderExt, Rectangle, TagCode, Twips};
+use swf::{parse_embedded_swf_len, CharacterId, Fixed8, HeaderExt, Rectangle, TagCode, Twips};
 use thiserror::Error;
 use url::Url;
 
@@ -132,6 +132,11 @@ impl SwfMovie {
         url: String,
         loader_url: Option<String>,
     ) -> Result<Self, Error> {
+        let swf_data = match parse_embedded_swf_len(&swf_data[..]) {
+            Ok(offset) => &swf_data[offset..swf_data.len() - 8],
+            Err(_) => swf_data,
+        };
+
         let compressed_len = swf_data.len();
         let swf_buf = swf::read::decompress_swf(swf_data)?;
         let encoding = swf::SwfStr::encoding_for_version(swf_buf.header.version());

@@ -313,6 +313,7 @@ pub fn parse_url(path: &Path) -> Result<Url, Error> {
 fn actually_pick_file(dir: Option<PathBuf>) -> Option<PathBuf> {
     let mut dialog = FileDialog::new()
         .add_filter("Flash Files", &["swf", "spl"])
+        .add_filter("Flash Projector Files", &["exe"])
         .add_filter("All Files", &["*"])
         .set_title("Load a Flash File");
 
